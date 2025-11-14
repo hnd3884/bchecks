@@ -1,0 +1,81 @@
+id: 9aaa5495-451a-4aed-84be-8c64cdcbea7a
+name: "[Safe] check SQL Injection"
+function: SCAN_CHECK_ACTIVE_PER_INSERTION_POINT
+location: SCANNER
+source: |
+  /**
+   * Identifies server-side template injection.
+   * @author PortSwigger
+   **/
+
+  if (insertionPoint == null)
+  {
+      return AuditResult.auditResult();
+  }
+
+  // Test for boolean-based injection
+  var rr3 = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + "'\" THEN 1/0")));
+  if(rr3.response().body().toString().contains("SQLITE_ERROR") ||
+     rr3.response().body().toString().contains("syntax error") ||
+     rr3.response().body().toString().contains("SQL syntax") ||
+     rr3.response().body().toString().contains("Incorrect syntax")
+     ){
+      return AuditResult.auditResult(
+              AuditIssue.auditIssue(
+                      "Error-based SQL Injection",
+                      "Evaluated with payload: <code>" + insertionPoint.baseValue() + "'\" THEN 1/0" + "</code>",
+                      "Avoid evaluating user input; sandbox templating.",
+                      rr3.request().url(),
+                      AuditIssueSeverity.HIGH,
+                      AuditIssueConfidence.FIRM,
+                      "",
+                      "",
+                      AuditIssueSeverity.HIGH,
+                      rr3
+              )
+      );
+  }
+
+  if (rr3.hasResponse() && (requestResponse.response().statusCode() != rr3.response().statusCode()) && (rr3.response().statusCode() == 500 || rr3.response().statusCode() == 400)){
+      return AuditResult.auditResult(
+                  AuditIssue.auditIssue(
+                          "Posible Error-based SQL Injection",
+                          "Evaluated with payload: <code>" + insertionPoint.baseValue() + "'\" THEN 1/0" + "</code>",
+                          "Avoid evaluating user input; sandbox templating.",
+                          rr3.request().url(),
+                          AuditIssueSeverity.INFORMATION,
+                          AuditIssueConfidence.TENTATIVE,
+                          "",
+                          "",
+                          AuditIssueSeverity.INFORMATION,
+                          rr3
+                  )
+          );
+  }
+
+  // simple test for error-based injection
+  var rr1 = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + "'")));
+  var rr2 = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + "''")));
+
+  if (rr1.hasResponse() && rr2.hasResponse())
+  {
+      if (rr1.response().statusCode() != requestResponse.response().statusCode() && requestResponse.response().statusCode() == rr2.response().statusCode() && rr2.response().body().toString() != rr1.response().body().toString())
+      {
+          return AuditResult.auditResult(
+                  AuditIssue.auditIssue(
+                          "Posible SQL Injection",
+                          "Evaluated with payload: <code>" + insertionPoint.baseValue() + "'" + "</code>",
+                          "Avoid evaluating user input; sandbox templating.",
+                          rr1.request().url(),
+                          AuditIssueSeverity.INFORMATION,
+                          AuditIssueConfidence.TENTATIVE,
+                          "",
+                          "",
+                          AuditIssueSeverity.INFORMATION,
+                          rr1
+                  )
+          );
+      }
+  }
+
+  return AuditResult.auditResult();

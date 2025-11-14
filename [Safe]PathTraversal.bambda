@@ -1,0 +1,51 @@
+id: 45bb9d4c-3bec-46dd-ad9f-8ccac44189ef
+name: "[Safe] Path traversal"
+function: SCAN_CHECK_ACTIVE_PER_INSERTION_POINT
+location: SCANNER
+source: |
+  /**
+   * Identifies server-side template injection.
+   * @author PortSwigger
+   **/
+
+  if (insertionPoint == null)
+  {
+      return AuditResult.auditResult();
+  }
+
+  String[] payloads = new String[] {
+          "/../",
+          "%2f%2e%2e%2f",
+          "%2f..%2f",
+          "/%2e%2e/",
+      	"\\..\\",
+          "%5c%2e%2e%5c",
+          "%5c..%5c",
+          "\\%2e%2e\\"
+  };
+
+  for (String payload : payloads){
+      var rr = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + payload + insertionPoint.baseValue())));
+      if (rr.hasResponse() && rr.response().statusCode() == requestResponse.response().statusCode())
+      {
+          int difference = Math.abs(rr.response().body().toString().length() - requestResponse.response().body().toString().length());
+          if (difference <= 7){
+          	return AuditResult.auditResult(
+                      AuditIssue.auditIssue(
+                              "Posible Path traversal",
+                              "Payload: <code>" + api().utilities().htmlUtils().encode(insertionPoint.baseValue() + payload + insertionPoint.baseValue()) + "</code>",
+                              "Avoid evaluating user input; sandbox templating.",
+                              rr.request().url(),
+                              AuditIssueSeverity.INFORMATION,
+                              AuditIssueConfidence.TENTATIVE,
+                              "",
+                              "",
+                              AuditIssueSeverity.INFORMATION,
+                              rr
+                      )
+              );
+          }
+      }
+  }
+
+  return AuditResult.auditResult();

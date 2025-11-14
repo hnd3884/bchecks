@@ -1,0 +1,82 @@
+id: 602bd022-565f-4a39-bed7-d6dca448ad96
+name: "[Safe] SSTI"
+function: SCAN_CHECK_ACTIVE_PER_INSERTION_POINT
+location: SCANNER
+source: |
+  /**
+   * Identifies server-side template injection.
+   * @author PortSwigger
+   **/
+
+  if (insertionPoint == null)
+  {
+      return AuditResult.auditResult();
+  }
+
+  record Probe(String name, String[] payloads, String expectRegex) {}
+
+  var probes = List.of(
+          new Probe("SSTI", new String[]{
+              "{{192*168}}",
+      		"@{192*168}", 
+      		"{{ '32256'.toUPPERCASE() }}",
+      		"{% raw %}",
+              "}} {{192*168}} {{", 
+      		"${{192*168}}", 
+              "}} {{192*168}} {{", 
+              "#{192*168}#", 
+              "${192*168}", 
+              "}${192*168}{", 
+              "{{print 192*168}}", 
+              "}} {{print 192*168}} {{" 
+          }, "32256")
+  );
+
+  for (var probe : probes)
+  {
+      for (var payload : probe.payloads())
+      {
+          var rr = http.sendRequest(insertionPoint.buildHttpRequestWithPayload(ByteArray.byteArray(insertionPoint.baseValue() + payload)));
+          if (rr.hasResponse())
+          {
+              var body = rr.response().body().toString();
+              if (body.matches("(?s).*" + probe.expectRegex() + ".*") && !body.contains(payload))
+              {
+                  return AuditResult.auditResult(
+                          AuditIssue.auditIssue(
+                                  "Server-Side Template Injection (" + probe.name() + ")",
+                                  "Evaluated with payload: <code>" + api().utilities().htmlUtils().encode(payload) + "</code>",
+                                  "Avoid evaluating user input; sandbox templating.",
+                                  rr.request().url(),
+                                  AuditIssueSeverity.HIGH,
+                                  AuditIssueConfidence.FIRM,
+                                  "",
+                                  "",
+                                  AuditIssueSeverity.HIGH,
+                                  rr
+                          )
+                  );
+              }
+
+              if (rr.response().statusCode() == 500)
+              {
+                  return AuditResult.auditResult(
+                          AuditIssue.auditIssue(
+                                  "Posible Server-Side Template Injection",
+                                  "Evaluated with payload: <code>" + api().utilities().htmlUtils().encode(payload) + "</code>",
+                                  "Avoid evaluating user input; sandbox templating.",
+                                  rr.request().url(),
+                                  AuditIssueSeverity.INFORMATION,
+                                  AuditIssueConfidence.TENTATIVE,
+                                  "",
+                                  "",
+                                  AuditIssueSeverity.INFORMATION,
+                                  rr
+                          )
+                  );
+              }
+          }
+      }
+  }
+
+  return AuditResult.auditResult();

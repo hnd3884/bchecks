@@ -1,5 +1,5 @@
 id: d0fa1ce2-153e-4ef4-9d24-df37edb17b8e
-name: Possible header used in backend
+name: "[Safe] Custom header used"
 function: SCAN_CHECK_ACTIVE_PER_REQUEST
 location: SCANNER
 source: |
@@ -31,19 +31,24 @@ source: |
       "X-Wap-Profile"
   };
 
-  var fuzzs = new String[]{
+  var basicFuzz = new String[]{
+  	"!@#$%^&*()[]{{}}\";.'::?asd_=+"
+  };
+
+  var SSTIfuzzs = new String[]{
       // SSTI payloads
-      "{{ aaaa }}",
-      "${aaaa}",
-      "<%=aaaa%>",
-      "#{aaaa}",
-      "${{aaaa}}",
-      "${{aaaa}}",
-      "${{T(aaaa7)}}",
-      // SQL payloads
-      "' OR '1'='1",
-      "\" OR \"1\"=\"1",
-      "asda then 1/0 ; -- asd",
+      "{{192*168}}",
+      		"@{192*168}", 
+      		"{{ '32256'.toUPPERCASE() }}",
+      		"{% raw %}",
+              "}} {{192*168}} {{", 
+      		"${{192*168}}", 
+              "}} {{192*168}} {{", 
+              "#{192*168}#", 
+              "${192*168}", 
+              "}${192*168}{", 
+              "{{print 192*168}}", 
+              "}} {{print 192*168}} {{" 
       
   };
 
@@ -128,19 +133,19 @@ source: |
   List<AuditIssue> auditIssues = new ArrayList<>();
 
   for (var header : headers) {
-      for (var fuzz : fuzzs) {
+      for (var fuzz : basicFuzz) {
           var newRequest = requestResponse.request();
           var newHeader = HttpHeader.httpHeader(header, fuzz);
-
+  
           if(newRequest.hasHeader(header)) {
               newHeader = HttpHeader.httpHeader(header, newRequest.headerValue(header) + fuzz);
               newRequest = newRequest.withUpdatedHeader(newHeader);
           } else {
               newRequest = newRequest.withAddedHeader(newHeader);
           }
-
+  
           var rr = http.sendRequest(newRequest);
-
+  
           if (rr.hasResponse() && rr.response().statusCode() != requestResponse.response().statusCode()) {
               auditIssues.add(AuditIssue.auditIssue(
                                   "Possible header used in backend",
@@ -155,6 +160,39 @@ source: |
                                   rr
                           ));
           }
+      }
+      
+      for (var fuzz : SSTIfuzzs) {
+          var newRequest = requestResponse.request();
+          var newHeader = HttpHeader.httpHeader(header, fuzz);
+
+          if(newRequest.hasHeader(header)) {
+              newHeader = HttpHeader.httpHeader(header, newRequest.headerValue(header) + fuzz);
+              newRequest = newRequest.withUpdatedHeader(newHeader);
+          } else {
+              newRequest = newRequest.withAddedHeader(newHeader);
+          }
+
+          var rr = http.sendRequest(newRequest);
+          
+          var body = rr.response().body().toString();
+              if (body.matches("(?s).*" + "32256" + ".*"))
+              {
+                  auditIssues.add(
+                          AuditIssue.auditIssue(
+                                  "Posible Server-Side Template Injection in header " + header,
+                                  "Evaluated with payload: <code>" + api().utilities().htmlUtils().encode(fuzz) + "</code>",
+                                  "Avoid evaluating user input; sandbox templating.",
+                                  rr.request().url(),
+                                  AuditIssueSeverity.HIGH,
+                                  AuditIssueConfidence.FIRM,
+                                  "",
+                                  "",
+                                  AuditIssueSeverity.HIGH,
+                                  rr
+                          )
+                  );
+              }
       }
 
       for (var fuzz : timebasedSQLFuzzs) {
